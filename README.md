@@ -1,14 +1,16 @@
 # Image Captioning with Transformer Architecture
 
-A deep learning project that generates natural language descriptions for images using a transformer-based encoder-decoder architecture. Trained on Flickr8k dataset with extensive experimentation on model architectures and the Lottery Ticket Hypothesis.
+**Course Project:** Building a system that generates natural language descriptions from images.
+
+**Task:** Bridge visual and linguistic modalities by interpreting pixel data and expressing understanding through generated text. A single image can be correctly described in multiple ways (e.g., "A dog on the grass" vs. "An animal playing outside"), requiring both grammatical correctness and semantic faithfulness.
 
 ---
 
 ## 📊 Dataset
 
-**Flickr8k**
+**Flickr8k** (provided via `caption_data.zip`)
 - 8,091 unique images
-- 40,455 captions (5 per image)
+- 40,455 captions (5 human-written descriptions per image)
 - Split: 80% train (6,472 images) / 10% validation (809 images) / 10% test (810 images)
 - Vocabulary: 3,003 tokens (frequency threshold ≥ 5)
 
@@ -18,7 +20,22 @@ A deep learning project that generates natural language descriptions for images 
 
 After three iterative training attempts (v5 → v6 → v7), **v6 emerged as the optimal architecture**.
 
-### Architecture
+### Architecture Overview
+
+The model uses an **encoder-decoder architecture**:
+
+1. **Image Encoder**: Pretrained EfficientNet-B0 (trained on ImageNet) extracts visual features
+   - Takes raw image (224×224 pixels)
+   - Outputs 1280-dimensional feature vector
+   - Feature vector projected down to 256 dimensions
+   - This becomes the "memory" that the decoder attends to
+
+2. **Transformer Decoder**: Generates caption word-by-word
+   - Starts with `<SOS>` (start of sequence) token
+   - At each step, attends to image features and previously generated words
+   - Predicts next word until `<EOS>` (end of sequence) token
+
+### Architecture Specifications
 
 | Component | Configuration |
 |-----------|---------------|
@@ -127,7 +144,7 @@ For production deployment:
 
 ---
 
-## 🎯 Lottery Ticket Hypothesis Experiments
+## 🎯 Lottery Ticket Hypothesis Experiments (Bonus)
 
 Two experiments explored network pruning:
 
@@ -157,120 +174,6 @@ Actually retrained the four architectures (Full/Medium/Small/Tiny) to verify if 
 - The 9M parameter count is already near-optimal for 8k images
 
 **Limitation:** Did not test iterative magnitude pruning (IMP) protocol from original Lottery Ticket paper, which might reveal better subnetworks.
-
----
-
-## 🚀 Quick Start
-
-### Training
-
-```python
-# Train v6 model (recommended)
-# Run: v6_training.ipynb
-# Expected time: ~2 hours on Tesla T4
-# Output: best_model.pth, image_captioning_model_complete.pth
-```
-
-### Inference
-
-```python
-from model import ImageCaptioningModel, generate_caption
-
-# Load model
-model = ImageCaptioningModel(vocab_size=3003, embed_dim=256, 
-                             num_heads=4, num_layers=3, dropout=0.3)
-model.load_state_dict(torch.load('best_model.pth'))
-
-# Generate caption
-caption = generate_caption('path/to/image.jpg', model, beam_width=5)
-print(caption)  # "a dog running through a field"
-```
-
----
-
-## 📈 Generation Methods
-
-Two decoding strategies are available:
-
-### 1. Beam Search (Default)
-- **Reliable and consistent**
-- Explores top-k most probable sequences
-- Best for evaluation metrics (BLEU)
-- Parameters: `beam_width=5` (optimal)
-
-### 2. Nucleus Sampling
-- **More diverse and natural**
-- Samples from top-p probability mass
-- Better for human evaluation
-- Parameters: `temperature=0.8, top_p=0.9`
-
-**Recommendation:** Use beam search for v6 (gives best BLEU scores). Nucleus sampling was tested on v7 but reduced BLEU-1 from 0.47 to lower scores.
-
----
-
-## 📁 Repository Structure
-
-```
-notebooks/
-├── v5_training.ipynb          # Initial attempt (512-dim, overfit)
-├── v6_training.ipynb          # Best model (256-dim) ⭐
-├── v7_training.ipynb          # Larger model (384-dim, underfit)
-├── v6_inference.ipynb         # Generate captions with v6
-├── architecture_search.ipynb  # 4-model comparison (Full/Medium/Small/Tiny)
-└── lottery_ticket.ipynb       # Pruning experiments
-
-models/
-├── best_model.pth             # v6 checkpoint (best val loss)
-├── image_captioning_model_complete.pth  # v6 final weights
-├── model_full.pth             # Architecture search: Full
-├── model_medium.pth           # Architecture search: Medium
-├── model_small.pth            # Architecture search: Small
-└── model_tiny.pth             # Architecture search: Tiny
-
-data/
-├── vocabulary.pkl             # Trained vocabulary (3003 tokens)
-├── data_splits.pkl            # Train/val/test split
-└── captions.txt               # Flickr8k captions
-```
-
----
-
-## 🔧 Technical Details
-
-### Model Architecture
-
-```
-ImageCaptioningModel
-├── ImageEncoder (EfficientNet-B0)
-│   ├── Backbone: efficientnet_b0 (pretrained)
-│   ├── Projection: Linear(1280 → 256)
-│   └── Dropout: 0.3
-│
-└── TransformerDecoder
-    ├── Embedding: (vocab_size, 256)
-    ├── Positional Encoding: Sinusoidal
-    ├── Decoder Layers: 3×
-    │   ├── Self-Attention: 4 heads
-    │   ├── Cross-Attention: 4 heads
-    │   └── Feedforward: 1024 dim
-    └── Output: Linear(256 → vocab_size)
-```
-
-### Loss Function
-
-**Label Smoothing Cross-Entropy**
-- Smoothing factor: 0.1
-- Prevents overconfidence on training data
-- Improves generalization
-
-Formula: `loss = (1 - ε) * CE + ε * uniform_distribution`
-
-### Optimizer
-
-**AdamW**
-- Learning rate: 1e-4 (frozen encoder) → 5e-5 (unfrozen)
-- Weight decay: 5e-4
-- Gradient clipping: max_norm=1.0
 
 ---
 
@@ -320,7 +223,7 @@ Evaluated on 100 test images:
    - Further compression requires architecture innovations (distillation, quantization)
 
 4. **Generation method affects results**
-   - Beam search: Better for BLEU metrics
+   - Beam search: Better for BLEU metrics (used for evaluation)
    - Nucleus sampling: More diverse but lower scores
 
 5. **Training time matters**
@@ -330,44 +233,22 @@ Evaluated on 100 test images:
 
 ---
 
-## 🔮 Future Work
-
-1. **Attention Mechanisms**: Add visual attention to improve spatial reasoning
-2. **Larger Datasets**: Train on MSCOCO (120k images) for better generalization
-3. **Knowledge Distillation**: Transfer v6 knowledge to smaller models
-4. **Quantization**: INT8 inference for 4× speedup
-5. **Iterative Magnitude Pruning**: Proper Lottery Ticket protocol with multiple prune-retrain cycles
-
----
-
 ## 📚 References
 
 - **Lottery Ticket Hypothesis**: Frankle & Carbin (2019), "The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks"
-- **EfficientNet**: Tan & Le (2019), "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks"
-- **Transformer**: Vaswani et al. (2017), "Attention Is All You Need"
-- **Dataset**: Hodosh et al. (2013), "Framing Image Description as a Ranking Task: Data, Models and Evaluation Metrics"
 
 ---
 
-## ⚙️ Requirements
+## 📝 Project Structure
 
-```
-torch >= 1.12.0
-torchvision >= 0.13.0
-timm >= 0.6.0
-pillow >= 9.0.0
-matplotlib >= 3.5.0
-nltk >= 3.7
-pandas >= 1.4.0
-tqdm >= 4.64.0
-```
+**Deliverables:**
+1. `data_and_training.ipynb` - Data loading, model definition, training process
+2. `inference.ipynb` - Model demonstration with `generate_caption()` function
+3. Model artifacts: `best_model.pth`, `image_captioning_model_complete.pth`
+4. Supporting files: `vocabulary.pkl`, `data_splits.pkl`
 
----
-
-## 📝 License
-
-This project is for educational purposes. Flickr8k dataset usage subject to original license terms.
-
----
-
-**Author Note:** This project demonstrates the importance of systematic experimentation in deep learning. The best model (v6) emerged not from intuition, but from careful comparison of three architectures and understanding the relationship between model capacity, dataset size, and regularization.
+**Notebooks include:**
+- v5, v6, v7 training iterations
+- Architecture search (Full/Medium/Small/Tiny comparison)
+- Lottery Ticket Hypothesis experiments (pruning analysis + retraining)
+- Comprehensive inference demonstrations with success/failure analysis
